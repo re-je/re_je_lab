@@ -3,7 +3,7 @@
 
 """ Test motion """
 
-from __future__ import absolute_import, division
+from __future__ import absolute_import
 
 import math
 import re
@@ -15,7 +15,7 @@ from pilz_robot_programming.commands import *
 from pilz_robot_programming.robot import *
 
 __REQUIRED_API_VERSION__ = "1"  # API version
-__ROBOT_VELOCITY__ = 0.2  # velocity of the robot
+__ROBOT_VELOCITY__ = 0.1  # velocity of the robot
 
 robot_config = {
     "planning_group": "manipulator",
@@ -139,9 +139,9 @@ def start_program(planning_group, target_link, reference_frame, default_or):
     # Home the robot
     try:
         r.move(home)
-        rospy.loginfo("Lead in move finished.")
+        rospy.loginfo("Lead out move finished.")
     except RobotMoveFailed:
-        rospy.loginfo("Lead in move failed.")
+        rospy.loginfo("Lead out move failed.")
 
 
 if __name__ == "__main__":
