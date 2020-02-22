@@ -1,2 +1,2 @@
-# re_je_lab
+# re.je Lab
 ROS Metapackage with varoius re.je setups and demos
