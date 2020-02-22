@@ -1,0 +1,166 @@
+#!/usr/bin/env python2
+# -*- coding: utf-8 -*-
+
+""" Test SM using move_group actions and servises """
+
+from __future__ import absolute_import, division
+
+import math
+import re
+import sys
+
+import rospkg
+
+import actionlib
+import rospy
+from geometry_msgs.msg import Point, Pose, Quaternion
+
+# from moveit_msgs.action import ExecuteTrajectory
+from moveit_msgs.msg import (
+    Constraints,
+    ExecuteTrajectoryAction,
+    RobotState,
+    RobotTrajectory,
+)
+from moveit_msgs.srv import GetCartesianPath, GetPositionFK
+from sensor_msgs.msg import JointState
+from std_msgs.msg import Header
+from tf.transformations import quaternion_from_euler
+
+# Find actions
+# rostopic list | grep -o -P '^.*(?=/feedback)'
+
+# rospy.wait_for_service("add_two_ints")
+rospy.init_node("robot_program_node")
+
+
+header = Header()
+header.frame_id = "world"
+
+# fk_link_names = rospy.get_param("/controller_joint_names")
+fk_link_names = ["link_1", "link_2", "link_3", "link_4", "link_5", "link_6"]
+joint_state = rospy.wait_for_message("/joint_states", JointState, timeout=None)
+# fk_link_names = joint_state.name
+
+
+# rospy.loginfo("Link names: %s", fk_link_names)
+# rospy.loginfo("Joint state: %s", joint_state)
+
+robot_state = RobotState()
+robot_state.joint_state = joint_state
+
+
+def string_to_point(gcode):
+    # Convert strings from Gcode file to ROS points
+    float_pos = map(float, re.findall("[-+]?\d*\.?\d+|[-+]?\d+", gcode))
+    if len(float_pos) == 3:
+        # convert from mm to m and round to 4
+        point = Point(
+            round(float_pos[0], 4), round(float_pos[1], 4), round(float_pos[2], 4),
+        )
+        return point
+    else:
+        rospy.logwarn("Non-position value on line")
+        return None
+
+
+def compute_fk_client(header, fk_link_names, robot_state):
+    rospy.wait_for_service("compute_fk")
+    try:
+        compute_fk = rospy.ServiceProxy("compute_fk", GetPositionFK)
+
+        return compute_fk(header, fk_link_names, robot_state)
+        # resp1 = add_two_ints(x, y)
+        # return pose_stamped
+    except rospy.ServiceException, e:
+        rospy.loginfo("Service call failed: %s", e)
+
+
+# rospy.loginfo(compute_fk_client(header, fk_link_names, robot_state).pose_stamped)
+
+
+def compute_cartesian_path_client(
+    header,
+    start_state,
+    group_name,
+    link_name,
+    waypoints,
+    max_step,
+    jump_threshold,
+    avoid_collisions,
+    path_constraints,
+):
+    rospy.wait_for_service("compute_cartesian_path")
+    try:
+        compute_fk = rospy.ServiceProxy("compute_cartesian_path", GetCartesianPath)
+
+        return compute_fk(
+            header,
+            start_state,
+            group_name,
+            link_name,
+            waypoints,
+            max_step,
+            jump_threshold,
+            avoid_collisions,
+            path_constraints,
+        )
+        # resp1 = add_two_ints(x, y)
+        # return pose_stamped
+    except rospy.ServiceException, e:
+        rospy.loginfo("Service call failed: %s", e)
+
+
+source_file = "studio_points.txt"
+garden_height = 0.4
+q = quaternion_from_euler(0, math.radians(180), 0)
+default_or = Quaternion(q[0], q[1], q[2], q[3])
+
+rospack = rospkg.RosPack()
+
+source_path = "{}/share/{}".format(rospack.get_path("studio_motion"), source_file)
+
+waypoints = []
+
+with open(source_path, "r") as points_file:
+    lines = points_file.readlines()
+
+    # Populate Sequence
+    for row in lines:
+        point = string_to_point(row)
+        if point:
+            pose = Pose(
+                position=Point(point.x, point.y, garden_height), orientation=default_or,
+            )
+            rospy.logdebug("Adding point:\n%s", point)
+
+            waypoints.append(pose)
+
+
+solution = compute_cartesian_path_client(
+    header, robot_state, "manipulator", "rake", waypoints, 0.02, 5, True, Constraints()
+).solution
+
+rospy.loginfo(solution)
+
+
+def execute_trajectory_client(solution):
+    # Creates the ExecuteTrajectoryClient, passing the type of the action
+    # (ExecuteTrajectory) to the constructor.
+    client = actionlib.SimpleActionClient("execute_trajectory", ExecuteTrajectoryAction)
+
+    # Waits until the action server has started up and started
+    # listening for goals.
+    client.wait_for_server()
+
+    # Sends the goal to the action server.
+    client.send_goal(solution)
+
+    # Waits for the server to finish performing the action.
+    client.wait_for_result()
+
+    # Prints out the result of executing the action
+    return client.get_result()  # A FibonacciResult
+
+
+execute_trajectory_client(solution)
