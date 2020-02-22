@@ -9,19 +9,18 @@ import math
 import re
 
 import rospkg
-
 import rospy
 from geometry_msgs.msg import Point
 from pilz_robot_programming.commands import *
 from pilz_robot_programming.robot import *
 
 __REQUIRED_API_VERSION__ = "1"  # API version
-__ROBOT_VELOCITY__ = 0.5  # velocity of the robot
+__ROBOT_VELOCITY__ = 0.2  # velocity of the robot
 
 robot_config = {
     "planning_group": "manipulator",
-    "target_link": "rake",
-    "reference_frame": "world",
+    "target_link": "pointer",
+    "reference_frame": "base_link",
     "default_or": from_euler(0, math.radians(180), 0),
 }
 
@@ -30,13 +29,10 @@ def string_to_point(gcode):
     # Convert strings from Gcode file to ROS points
     float_pos = map(float, re.findall("[-+]?\d*\.?\d+|[-+]?\d+", gcode))
     if len(float_pos) == 3:
-        # convert from mm to m and round to 4
-        point = Point(
-            round(float_pos[0], 4), round(float_pos[1], 4), round(float_pos[2], 4),
-        )
+        point = Point(float_pos[0], float_pos[1], float_pos[2])
         return point
     else:
-        rospy.logwarn("Non-position value on line")
+        rospy.logwarn("Non-position value on line?")
         return None
 
 
@@ -44,21 +40,28 @@ def start_program(planning_group, target_link, reference_frame, default_or):
 
     rospy.loginfo("Program started")  # log
 
+    # Home move
+    home = Ptp(
+        goal=[0, 0, 0, 0, math.radians(-90), 0],
+        vel_scale=__ROBOT_VELOCITY__,
+        planning_group=planning_group,
+    )
+
     # Home the robot
-    r.move(Ptp(goal=[0, 0, 0, 0, 0, 0], planning_group=planning_group))
+    try:
+        r.move(home)
+        rospy.loginfo("Lead in move finished.")
+    except RobotMoveFailed:
+        rospy.loginfo("Lead in move failed.")
 
-    source_file = "studio_points.txt"
-    source_path = "{}/share/{}".format(rospack.get_path("studio_motion"), source_file)
+    source_file = "square.txt"
+    source_path = "{}/share/{}".format(rospack.get_path("pilz_motion"), source_file)
 
-    garden_height = 0.4
-    radius = 0.01
+    radius = 0.005
 
     # Variables to be populated below
     init_ptp = None
     csv_seq = Sequence()
-
-    # TODO: we should clean the list in advance to make
-    # sure the last line is not just a blank line etc.
 
     with open(source_path, "r") as points_file:
         lines = points_file.readlines()
@@ -66,14 +69,14 @@ def start_program(planning_group, target_link, reference_frame, default_or):
         # Ptp to first position
         init_point = string_to_point(lines[0])
         init_pose = Pose(
-            position=Point(init_point.x, init_point.y, garden_height),
+            position=Point(init_point.x, init_point.y, init_point.z),
             orientation=default_or,
         )
 
         init_ptp = Ptp(
             goal=init_pose,
-            acc_scale=0.3,
-            # vel_scale=__ROBOT_VELOCITY__,
+            # acc_scale=0.3,
+            vel_scale=__ROBOT_VELOCITY__,
             planning_group=planning_group,
             target_link=target_link,
             reference_frame=reference_frame,
@@ -84,14 +87,13 @@ def start_program(planning_group, target_link, reference_frame, default_or):
             point = string_to_point(row)
             if point:
                 pose = Pose(
-                    position=Point(point.x, point.y, garden_height),
-                    orientation=default_or,
+                    position=Point(point.x, point.y, point.z), orientation=default_or
                 )
                 rospy.logdebug("Adding point:\n%s", point)
 
-                lin = Ptp(
+                lin = Lin(
                     goal=pose,
-                    acc_scale=0.1,
+                    # acc_scale=0.1,
                     vel_scale=__ROBOT_VELOCITY__,
                     planning_group=planning_group,
                     target_link=target_link,
@@ -103,13 +105,13 @@ def start_program(planning_group, target_link, reference_frame, default_or):
         # Final point in sequence with no radius blend
         final_point = string_to_point(lines[-1])
         final_pose = Pose(
-            position=Point(init_point.x, init_point.y, garden_height),
+            position=Point(init_point.x, init_point.y, init_point.z),
             orientation=default_or,
         )
 
         final_ptp = Lin(
             goal=final_pose,
-            acc_scale=0.1,
+            # acc_scale=0.1,
             vel_scale=__ROBOT_VELOCITY__,
             planning_group=planning_group,
             target_link=target_link,
@@ -121,7 +123,11 @@ def start_program(planning_group, target_link, reference_frame, default_or):
     rospy.loginfo("Attempting move.")
 
     # Ptp to first location
-    r.move(init_ptp)
+    try:
+        r.move(init_ptp)
+        rospy.loginfo("Lead in move finished.")
+    except RobotMoveFailed:
+        rospy.loginfo("Lead in move failed.")
 
     # Run the Lin Sequence
     try:
@@ -129,6 +135,13 @@ def start_program(planning_group, target_link, reference_frame, default_or):
         rospy.loginfo("Sequence move finished.")
     except RobotMoveFailed:
         rospy.loginfo("Sequence move failed.")
+
+    # Home the robot
+    try:
+        r.move(home)
+        rospy.loginfo("Lead in move finished.")
+    except RobotMoveFailed:
+        rospy.loginfo("Lead in move failed.")
 
 
 if __name__ == "__main__":

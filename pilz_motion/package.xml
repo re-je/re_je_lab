@@ -57,6 +57,8 @@
   <exec_depend>python-psutil</exec_depend>
   <exec_depend>tf_conversions</exec_depend>
   <exec_depend>prbt_hardware_support</exec_depend>
+  <exec_depend>pilz_robot_programming</exec_depend>
+
 
 
   <!-- The export tag contains other, unspecified, tags -->
