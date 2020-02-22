@@ -57,4 +57,9 @@
     <arg name="rviz_config" value="$(find mobile_moveit_config)/launch/moveit.rviz"/>
   </include>
 
+  <!-- Without Pilz real hardware and missing operation mode a speed override service has to be faked -->
+  <group if="$(eval arg('pipeline')=='pilz_command_planner')">
+    <node name="fake_speed_override_node" pkg="prbt_hardware_support" type="fake_speed_override_node" />
+  </group>
+
 </launch>
