@@ -1,0 +1,35 @@
+<?xml version="1.0"?>
+<robot name="gp8" 
+    xmlns:xacro="http://ros.org/wiki/xacro">
+    <xacro:include filename="$(find lab_description)/urdf/re_je_lab_platform.xacro" />
+    <xacro:include filename="$(find lab_description)/urdf/re_je_pointer.xacro" />
+
+    <xacro:include filename="$(find motoman_gp8_support)/urdf/gp8_macro.xacro" />
+    <!-- setup empty world -->
+    <link name="world"/>
+    <!-- include platform -->
+    <xacro:re_je_lab_platform prefix="" />
+    <!-- include gp8 robot -->
+    <xacro:motoman_gp8 prefix="" />
+    <!-- include pointer -->
+    <xacro:re_je_pointer prefix="" />
+
+    <joint name="world_to_platform" type="fixed">
+        <parent link="world"/>
+        <child link="platform"/>
+        <origin xyz="0 0 0.454" rpy="0 0 0"/>
+    </joint>
+
+    <joint name="platfrom_to_robot" type="fixed">
+        <parent link="platform"/>
+        <child link="base_link"/>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+    </joint>
+
+    <joint name="robot_to_pointer" type="fixed">
+        <parent link="tool0"/>
+        <child link="pointer"/>
+        <origin xyz="0 0 0.1" rpy="0 0 0"/>
+    </joint>
+
+</robot>
