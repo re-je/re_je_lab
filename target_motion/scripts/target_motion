@@ -1,0 +1,105 @@
+#!/usr/bin/env python2
+# -*- coding: utf-8 -*-
+
+""" Target motion moveit script """
+
+from __future__ import absolute_import
+
+import os
+import sys
+from builtins import input
+
+import moveit_commander
+import rospy
+import tf2_ros
+from ar_track_alvar_msgs.msg import AlvarMarkers
+from geometry_msgs.msg import Pose, PoseStamped
+
+marker_id = 3
+marker_pose = None
+
+# Transform marker from camera frame to robot's base frame
+def transform_pose(pose, target_frame):
+    try:
+        return tfBuffer.lookup_transform(target_frame, pose, rospy.Time(0))
+    except (
+        tf2_ros.LookupException,
+        tf2_ros.ConnectivityException,
+        tf2_ros.ExtrapolationException,
+    ):
+        rospy.logerr("Could not calculate transfrom")
+        return
+
+
+# Check the marker exists and then return the transform between target_pose to world
+def marker_cb(msg):
+    marker = next((x for x in msg.markers if x.id == marker_id), None)
+    global marker_pose
+    if not marker:
+        rospy.logerr("Marker %s not found", marker_id)
+        return
+    # target_pose is a static transfrom from marker pose as per lauch file
+    marker_pose = transform_pose("target_pose", "world")
+
+
+def main():
+    moveit_commander.roscpp_initialize(sys.argv)
+    group = moveit_commander.MoveGroupCommander("manipulator")
+    group.set_max_velocity_scaling_factor(0.5)
+
+    rospy.loginfo("current pose %s", group.get_current_pose())
+
+    rospy.sleep(2)
+    global marker_pose
+    while not rospy.is_shutdown():
+        if marker_pose:
+            rospy.logdebug(marker_pose)
+
+            # Set a pose gole from the marker pose information
+            pose_goal = group.get_current_pose().pose
+            pose_goal.position = marker_pose.transform.translation
+            pose_goal.orientation = marker_pose.transform.rotation
+
+            rospy.logdebug(pose_goal)
+
+            # Plan and execute path to marker
+            group.set_pose_target(pose_goal)
+            plan = group.plan()
+
+            group.execute(plan)
+            group.stop()
+
+            rospy.sleep(1)
+
+            # Plan and execute path back to park posistion
+            # Set park posistion
+            park_goal = group.get_current_joint_values()
+            park_goal[0] = 0.892249
+            park_goal[1] = 1.09392
+            park_goal[2] = -0.366986
+            park_goal[3] = -2.60445
+            park_goal[4] = 0.0413456
+            park_goal[5] = 2.54972
+
+            group.set_joint_value_target(park_goal)
+
+            plan = group.plan()
+
+            group.execute(plan)
+            group.stop()
+
+            # Clear marker pose inforamtion
+            marker_pose = None
+
+        rospy.sleep(3)
+
+
+if __name__ == "__main__":
+    rospy.init_node("move_to_marker", anonymous=True)
+
+    tfBuffer = tf2_ros.Buffer()
+    listener = tf2_ros.TransformListener(tfBuffer)
+
+    rospy.Subscriber("ar_pose_marker", AlvarMarkers, marker_cb)
+
+    main()
