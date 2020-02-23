@@ -45,7 +45,7 @@ def marker_cb(msg):
 def main():
     moveit_commander.roscpp_initialize(sys.argv)
     group = moveit_commander.MoveGroupCommander("manipulator")
-    group.set_max_velocity_scaling_factor(0.5)
+    group.set_max_velocity_scaling_factor(0.1)
 
     rospy.loginfo("current pose %s", group.get_current_pose())
 
