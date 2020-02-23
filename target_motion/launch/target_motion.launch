@@ -1,0 +1,46 @@
+<?xml version="1.0"?>
+<launch>
+
+    <!-- ARGUMENTS -->
+    <arg name="camera_name" default="/usb_cam" />
+    <arg name="camera_frame" default="camera" />
+    <arg name="image_topic" default="image_raw" />
+
+    <arg name="marker_size" default="6" />
+    <arg name="max_new_marker_error" default="0.08" />
+    <arg name="max_track_error" default="0.2" />
+
+    <!-- USED BY THE ar_pose_marker TOPIC -->
+    <arg name="output_frame" default="/camera" />
+
+    <!-- USED BY THE ROBOT DRIVER -->
+    <arg name="sim" default="true" />
+
+    <!-- INCLUDE GP8 MOVEIT -->
+    <include file="$(find mobile_moveit_config)/launch/moveit_planning_execution.launch">
+        <arg name="sim" value="$(arg sim)" />
+        <arg name="robot_ip" value="192.168.255.1" unless="$(arg sim)" />
+    </include>
+
+    <!-- STATIC TRANSFORMS FOR AR TARGETS -->
+
+    <node pkg="tf" type="static_transform_publisher" name="usb_cam_tf" args="-0.19 0.11 -0.003 0 0 0 ar_marker_6 world 100" />
+    <node pkg="tf" type="static_transform_publisher" name="target_pose_tf" args="0 0 0.15 0 3.14159 0 ar_marker_3 target_pose 100" />
+
+    <!-- LAUNCHES USB_CAM -->
+    <node name="usb_cam" pkg="usb_cam" type="usb_cam_node" output="screen">
+        <param name="video_device" value="/dev/video2" />
+        <param name="camera_info_url" value="package://target_motion/config/logitech_c910_calibration_640x480.yaml" />
+        <param name="image_width" value="640" />
+        <param name="image_height" value="480" />
+        <param name="pixel_format" value="yuyv" />
+        <param name="camera_frame_id" value="$(arg camera_frame)" />
+        <param name="io_method" value="mmap"/>
+        <param name="auto_focus" type="bool" value="true" />
+        <param name="framerate" value="30" />
+    </node>
+
+    <!-- START AR TRACKER -->
+    <node name="ar_track_alvar" pkg="ar_track_alvar" type="individualMarkersNoKinect" respawn="false" output="screen" args="$(arg marker_size) $(arg max_new_marker_error) $(arg max_track_error) $(arg camera_name)/$(arg image_topic) $(arg camera_name)/camera_info $(arg output_frame)" />
+
+</launch>
