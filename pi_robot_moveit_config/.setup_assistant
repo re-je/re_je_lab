@@ -1,0 +1,11 @@
+moveit_setup_assistant_config:
+  URDF:
+    package: pi_robot_description
+    relative_path: urdf/pedestal_pi_no_gripper.xacro
+    xacro_args: ""
+  SRDF:
+    relative_path: config/pedestal_pi_no_gripper.srdf
+  CONFIG:
+    author_name: Gary Edwards
+    author_email: gary@re.je
+    generated_timestamp: 1582486441
