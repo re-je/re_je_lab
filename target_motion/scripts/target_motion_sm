@@ -1,7 +1,7 @@
 #!/usr/bin/env python2
 # -*- coding: utf-8 -*-
 
-""" Test SM using move_group actions and servises """
+""" Target motion moveit script using SMACH """
 
 from __future__ import absolute_import, division
 
@@ -9,12 +9,10 @@ import math
 import re
 import sys
 
-import rospkg
-
 import actionlib
+import rospkg
 import rospy
 from geometry_msgs.msg import Point, Pose, Quaternion
-
 # from moveit_msgs.action import ExecuteTrajectory
 from moveit_msgs.msg import (
     Constraints,
@@ -111,14 +109,14 @@ def compute_cartesian_path_client(
         rospy.loginfo("Service call failed: %s", e)
 
 
-source_file = "studio_points.txt"
+source_file = "square.txt"
 garden_height = 0.4
 q = quaternion_from_euler(0, math.radians(180), 0)
 default_or = Quaternion(q[0], q[1], q[2], q[3])
 
 rospack = rospkg.RosPack()
 
-source_path = "{}/share/{}".format(rospack.get_path("studio_motion"), source_file)
+source_path = "{}/share/{}".format(rospack.get_path("pilz_motion"), source_file)
 
 waypoints = []
 
