@@ -45,7 +45,16 @@ def marker_cb(msg):
 def main():
     moveit_commander.roscpp_initialize(sys.argv)
     group = moveit_commander.MoveGroupCommander("manipulator")
-    group.set_max_velocity_scaling_factor(0.1)
+    group.set_max_velocity_scaling_factor(0.05)
+
+    # Set park posistion
+    park_goal = group.get_current_joint_values()
+    park_goal[0] = 0.892249
+    park_goal[1] = 1.09392
+    park_goal[2] = -0.366986
+    park_goal[3] = -2.60445
+    park_goal[4] = 0.0413456
+    park_goal[5] = 2.54972
 
     rospy.loginfo("current pose %s", group.get_current_pose())
 
@@ -72,15 +81,6 @@ def main():
             rospy.sleep(1)
 
             # Plan and execute path back to park posistion
-            # Set park posistion
-            park_goal = group.get_current_joint_values()
-            park_goal[0] = 0.892249
-            park_goal[1] = 1.09392
-            park_goal[2] = -0.366986
-            park_goal[3] = -2.60445
-            park_goal[4] = 0.0413456
-            park_goal[5] = 2.54972
-
             group.set_joint_value_target(park_goal)
 
             plan = group.plan()
