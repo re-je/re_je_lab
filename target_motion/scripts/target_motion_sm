@@ -1,164 +1,206 @@
 #!/usr/bin/env python2
 # -*- coding: utf-8 -*-
 
-""" Target motion moveit script using SMACH """
+""" Target motion MoveIt script using SMACH """
 
 from __future__ import absolute_import, division
 
 import math
-import re
-import sys
+from builtins import input
 
-import actionlib
-import rospkg
 import rospy
-from geometry_msgs.msg import Point, Pose, Quaternion
-# from moveit_msgs.action import ExecuteTrajectory
+import smach
+import tf2_ros
+from ar_track_alvar_msgs.msg import AlvarMarkers
+from geometry_msgs.msg import Point, Pose, PoseStamped, Quaternion
+from moveit_goal_builder import MoveItGoalBuilder
 from moveit_msgs.msg import (
-    Constraints,
     ExecuteTrajectoryAction,
-    RobotState,
-    RobotTrajectory,
+    ExecuteTrajectoryGoal,
+    MoveGroupAction,
 )
-from moveit_msgs.srv import GetCartesianPath, GetPositionFK
-from sensor_msgs.msg import JointState
-from std_msgs.msg import Header
-from tf.transformations import quaternion_from_euler
-
-# Find actions
-# rostopic list | grep -o -P '^.*(?=/feedback)'
-
-# rospy.wait_for_service("add_two_ints")
-rospy.init_node("robot_program_node")
+from moveit_msgs.srv import GetCartesianPath, GetCartesianPathRequest
+from qt_smach_viewer.introspection import IntrospectionServer
+from rospy_message_converter import json_message_converter
+from smach_ros import ServiceState, SimpleActionState
+from std_msgs import Header
 
 
-header = Header()
-header.frame_id = "world"
-
-# fk_link_names = rospy.get_param("/controller_joint_names")
-fk_link_names = ["link_1", "link_2", "link_3", "link_4", "link_5", "link_6"]
-joint_state = rospy.wait_for_message("/joint_states", JointState, timeout=None)
-# fk_link_names = joint_state.name
-
-
-# rospy.loginfo("Link names: %s", fk_link_names)
-# rospy.loginfo("Joint state: %s", joint_state)
-
-robot_state = RobotState()
-robot_state.joint_state = joint_state
-
-
-def string_to_point(gcode):
-    # Convert strings from Gcode file to ROS points
-    float_pos = map(float, re.findall("[-+]?\d*\.?\d+|[-+]?\d+", gcode))
-    if len(float_pos) == 3:
-        # convert from mm to m and round to 4
-        point = Point(
-            round(float_pos[0], 4), round(float_pos[1], 4), round(float_pos[2], 4),
+# State to get user input to confrim robot area is clear
+class UserCheckState(smach.State):
+    def __init__(self):
+        super(UserCheckState, self).__init__(
+            outcomes=["continue", "aborted"], input_keys=[], output_keys=[], io_keys=[]
         )
-        return point
-    else:
-        rospy.logwarn("Non-position value on line")
-        return None
+
+    def execute(self, ud):
+        rospy.logwarn("Place the marker and stand clear of the robot?(Y/n):")
+        go = input()
+        if go == "Y":
+            return "continue"
+        else:
+            return "aborted"
 
 
-def compute_fk_client(header, fk_link_names, robot_state):
-    rospy.wait_for_service("compute_fk")
-    try:
-        compute_fk = rospy.ServiceProxy("compute_fk", GetPositionFK)
-
-        return compute_fk(header, fk_link_names, robot_state)
-        # resp1 = add_two_ints(x, y)
-        # return pose_stamped
-    except rospy.ServiceException, e:
-        rospy.loginfo("Service call failed: %s", e)
-
-
-# rospy.loginfo(compute_fk_client(header, fk_link_names, robot_state).pose_stamped)
-
-
-def compute_cartesian_path_client(
-    header,
-    start_state,
-    group_name,
-    link_name,
-    waypoints,
-    max_step,
-    jump_threshold,
-    avoid_collisions,
-    path_constraints,
-):
-    rospy.wait_for_service("compute_cartesian_path")
-    try:
-        compute_fk = rospy.ServiceProxy("compute_cartesian_path", GetCartesianPath)
-
-        return compute_fk(
-            header,
-            start_state,
-            group_name,
-            link_name,
-            waypoints,
-            max_step,
-            jump_threshold,
-            avoid_collisions,
-            path_constraints,
+# Wait and clear marker_pose user data
+class WaitState(smach.State):
+    def __init__(self):
+        super(WaitState, self).__init__(
+            outcomes=["continue"], output_keys=["marker_pose"],
         )
-        # resp1 = add_two_ints(x, y)
-        # return pose_stamped
-    except rospy.ServiceException, e:
-        rospy.loginfo("Service call failed: %s", e)
+
+    def execute(self, ud):
+        rospy.loginfo("Clearing Marker Pose User Data")
+        ud.marker_pose = None
+        rospy.sleep(2.0)
+        return "continue"
 
 
-source_file = "square.txt"
-garden_height = 0.4
-q = quaternion_from_euler(0, math.radians(180), 0)
-default_or = Quaternion(q[0], q[1], q[2], q[3])
+# Transform marker from camera frame to robot's base frame
+class WaitForTransformState(smach.State):
+    def __init__(self, timeout=2):
+        super(WaitForTransformState, self).__init__(
+            outcomes=["timeout", "marker_found", "preempted"],
+            output_keys=["marker_pose"],
+        )  # all outcomes and user data are defined
+        # initialise the subscriber
+        self.sub = rospy.Subscriber("ar_pose_marker", AlvarMarkers, self.marker_cb)
+        # where we will put the content of the message
+        self.marker_pose = None
+        # the timeout float
+        self.timeout = timeout
 
-rospack = rospkg.RosPack()
-
-source_path = "{}/share/{}".format(rospack.get_path("pilz_motion"), source_file)
-
-waypoints = []
-
-with open(source_path, "r") as points_file:
-    lines = points_file.readlines()
-
-    # Populate Sequence
-    for row in lines:
-        point = string_to_point(row)
-        if point:
-            pose = Pose(
-                position=Point(point.x, point.y, garden_height), orientation=default_or,
+    # marker tf callback function
+    def marker_cb(self, msg):
+        try:
+            self.marker_pose = tfBuffer.lookup_transform(
+                "world", "target_pose", rospy.Time(0)
             )
-            rospy.logdebug("Adding point:\n%s", point)
+            return
+        except (
+            tf2_ros.LookupException,
+            tf2_ros.ConnectivityException,
+            tf2_ros.ExtrapolationException,
+        ):
+            rospy.logerr("Could not calculate transfrom")
+            return
 
-            waypoints.append(pose)
-
-
-solution = compute_cartesian_path_client(
-    header, robot_state, "manipulator", "rake", waypoints, 0.02, 5, True, Constraints()
-).solution
-
-rospy.loginfo(solution)
-
-
-def execute_trajectory_client(solution):
-    # Creates the ExecuteTrajectoryClient, passing the type of the action
-    # (ExecuteTrajectory) to the constructor.
-    client = actionlib.SimpleActionClient("execute_trajectory", ExecuteTrajectoryAction)
-
-    # Waits until the action server has started up and started
-    # listening for goals.
-    client.wait_for_server()
-
-    # Sends the goal to the action server.
-    client.send_goal(solution)
-
-    # Waits for the server to finish performing the action.
-    client.wait_for_result()
-
-    # Prints out the result of executing the action
-    return client.get_result()  # A FibonacciResult
+    def execute(self, ud):
+        # compute the timeout with rostime
+        ros_timeout_ = rospy.Time().now() + rospy.Duration(self.timeout)
+        # an empty string is considered False, non-empty True
+        while not self.marker_pose:
+            # check if we are over the timeout rostime
+            if rospy.Time.now() > ros_timeout_:
+                rospy.logwarn("Timed Out")  # warning message
+                return "timeout"  # timeout
+            # check if we are preempted or if ctrl+c
+            elif self.preempt_requested() or rospy.is_shutdown():
+                rospy.logwarn("Preempted ! (or shutdown)")  # waning message
+                return "preempted"  # preempted
+                rospy.sleep(0.1)  # free the thread for callback checking
+        rospy.loginfo("Marker transfrom found! : '%s'", self.marker_pose)
+        # copy the message content inside the userdata
+        ud.marker_pose = self.marker_pose
+        return "marker_found"  # message received
 
 
-execute_trajectory_client(solution)
+def TargetSM():
+    # Initialisation
+    Target_sm = smach.StateMachine(outcomes=["succeeded", "aborted", "preempted"])
+    # 'with' means here: Open the state machine to let us add state and then close.
+    with Target_sm:
+
+        Target_sm.add(
+            "StartupCheck",
+            UserCheckState(),
+            transitions={"continue": "HomeRobot", "aborted": "aborted"},
+        )
+
+        def home_robot_cb(ud, request):
+            builder = MoveItGoalBuilder()
+            builder.set_joint_goal(
+                rospy.get_param("controller_joint_names"),
+                [0.892249, 1.09392, -0.366986, -2.60445, 0.0413456, 2.54972],
+            )
+            builder.group_name = "manipulator"
+            goal = builder.build()
+
+            return goal
+
+        Target_sm.add(
+            "HomeRobot",
+            SimpleActionState("move_group", MoveGroupAction, goal_cb=home_robot_cb),
+            transitions={"succeeded": "UserPrompt"},
+        )
+
+        Target_sm.add(
+            "UserPrompt",
+            UserCheckState(),
+            transitions={"continue": "WaitForTransform", "aborted": "aborted"},
+        )
+
+        Target_sm.add(
+            "WaitForTransform",
+            WaitForTransformState(),
+            transitions={
+                "timeout": "UserPrompt",
+                "message_received": "TargetRobot",
+                "preempted": "preempted",
+            },
+        )
+
+        @smach.cb_interface(input_keys=["marker_pose"])
+        def target_robot_cb(ud, request):
+            pose_stamped = PoseStamped()
+            pose_stamped.header.frame_id = "world"
+            pose_stamped.pose.position = ud.marker_pose.transform.translation
+            pose_stamped.pose.orientation = ud.marker_pose.transform.rotation
+
+            builder = MoveItGoalBuilder()
+            builder.set_pose_goal(pose_stamped)
+            builder.group_name = "manipulator"
+            builder.fixed_frame = "world"
+            goal = builder.build()
+
+            return goal
+
+        Target_sm.add(
+            "TargetRobot",
+            SimpleActionState("move_group", MoveGroupAction, goal_cb=target_robot_cb),
+            transitions={"succeeded": "Wait", "aborted": "UserPrompt"},
+        )
+
+        Target_sm.add(
+            "Wait", WaitState(), transitions={"continue": "HomeRobot"},
+        )
+
+
+# A function main to be run
+def main():
+    # Create a StateMachine with the previous function
+    Target_sm = TargetSM()
+    # Setup  a IntrospectionServer to see in Smach Viewer
+    introspection_server = IntrospectionServer(Target_sm)
+    # start the server
+    introspection_server.start()
+    # Wait  before the execution start
+    rospy.sleep(3.0)
+    # Start the state machine
+    outcome = Target_sm.execute()
+    # Print a information about the result of the state machine
+    rospy.loginfo("Result : %s", outcome)
+    # Stop the IntrospectionServer
+    introspection_server.stop()
+
+
+if __name__ == "__main__":
+    # Initialising a ROS Node
+    rospy.init_node("target_motion")
+
+    # Create the tf2 buffer and listener
+    tfBuffer = tf2_ros.Buffer()
+    listener = tf2_ros.TransformListener(tfBuffer)
+
+    # Run the main function
+    main()

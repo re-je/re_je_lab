@@ -31,7 +31,7 @@ def transform_pose(pose, target_frame):
         return
 
 
-# Check the marker exists and then return the transform between target_pose to world
+# Check the marker exists and return the transform between target_pose to world
 def marker_cb(msg):
     marker = next((x for x in msg.markers if x.id == marker_id), None)
     global marker_pose
