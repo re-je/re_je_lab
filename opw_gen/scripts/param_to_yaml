@@ -5,9 +5,12 @@
 
 from __future__ import absolute_import, print_function
 
+import pprint
+
 from urdf_parser_py.urdf import URDF
 from urdf_to_opw_kinematics.main import convert
 
 robot = URDF.from_parameter_server()
+pp = pprint.PrettyPrinter(indent=4)
 
-print(convert(robot))
+print(pp.pprint(convert(robot)))
