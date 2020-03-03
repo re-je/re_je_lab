@@ -8,7 +8,6 @@ project(pilz_motion)
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
 ## is used, also find other catkin packages
 find_package(catkin REQUIRED COMPONENTS
-  motoman_gp8_support
 )
 
 ## System dependencies are found with CMake's conventions
