@@ -23,7 +23,7 @@
 
   <!-- Load cartesian limits -->
   <group ns="$(arg robot_description)_planning">
-    <rosparam command="load" file="$(find studio_moveit_config)/config/cartesian_limits.yaml"/>
+    <rosparam command="load" file="$(find lab_moveit_config)/config/cartesian_limits.yaml"/>
   </group>
 
 </launch>
