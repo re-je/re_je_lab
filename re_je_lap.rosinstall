@@ -1,0 +1,2 @@
+- git: {local-name: urdf_to_opw_kinematics, uri: 'https://github.com/JeroenDM/urdf_to_opw_kinematics.git', version: master}
+- git: {local-name: motoman, uri: 'https://github.com/ros-industrial/motoman.git', version: kinetic-devel}
