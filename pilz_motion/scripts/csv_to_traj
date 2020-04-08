@@ -27,9 +27,9 @@ robot_config = {
 
 def string_to_point(gcode):
     # Convert strings from Gcode file to ROS points
-    float_pos = map(float, re.findall("[-+]?\d*\.?\d+|[-+]?\d+", gcode))
+    float_pos = re.findall("[-+]?\d*\.?\d+|[-+]?\d+", gcode)
     if len(float_pos) == 3:
-        point = Point(float_pos[0], float_pos[1], float_pos[2])
+        point = Point(*float_pos)
         return point
     else:
         rospy.logwarn("Non-position value on line?")
@@ -69,7 +69,7 @@ def start_program(planning_group, target_link, reference_frame, default_or):
         # Ptp to first position
         init_point = string_to_point(lines[0])
         init_pose = Pose(
-            position=Point(init_point.x, init_point.y, init_point.z),
+            position=init_point,
             orientation=default_or,
         )
 
@@ -83,11 +83,11 @@ def start_program(planning_group, target_link, reference_frame, default_or):
         )
 
         # Populate Sequence
-        for row in lines[1:-1]:
+        for row in lines[1:-2]:
             point = string_to_point(row)
             if point:
                 pose = Pose(
-                    position=Point(point.x, point.y, point.z), orientation=default_or
+                    position=point, orientation=default_or
                 )
                 rospy.logdebug("Adding point:\n%s", point)
 
@@ -105,7 +105,7 @@ def start_program(planning_group, target_link, reference_frame, default_or):
         # Final point in sequence with no radius blend
         final_point = string_to_point(lines[-1])
         final_pose = Pose(
-            position=Point(init_point.x, init_point.y, init_point.z),
+            position=final_point,
             orientation=default_or,
         )
 
