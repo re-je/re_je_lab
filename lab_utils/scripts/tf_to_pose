@@ -2,6 +2,7 @@
 import geometry_msgs.msg
 import rospy
 import tf2_ros
+import tf_conversions
 
 if __name__ == "__main__":
     rospy.init_node("tf_to_pose")
@@ -11,6 +12,9 @@ if __name__ == "__main__":
 
     tool0_pose = rospy.Publisher(
         "/pose", geometry_msgs.msg.TransformStamped, queue_size=1
+    )
+    tool0_rpy = rospy.Publisher(
+        "/euler", geometry_msgs.msg.Vector3Stamped, queue_size=1
     )
 
     while not rospy.is_shutdown():
@@ -26,3 +30,21 @@ if __name__ == "__main__":
             continue
 
         tool0_pose.publish(trans)
+
+        rpy = geometry_msgs.msg.Vector3Stamped()
+        rpy.header = trans.header
+
+        (
+            rpy.vector.x,
+            rpy.vector.y,
+            rpy.vector.z,
+        ) = tf_conversions.transformations.euler_from_quaternion(
+            [
+                trans.transform.rotation.x,
+                trans.transform.rotation.y,
+                trans.transform.rotation.z,
+                trans.transform.rotation.w,
+            ]
+        )
+
+        tool0_rpy.publish(rpy)
