@@ -1,6 +1,6 @@
 # cartesian_limits.yaml used by pilz planner
 cartesian_limits:
-  max_trans_vel: 0.125
-  max_trans_acc: 0.25
-  max_trans_dec: -0.25
-  max_rot_vel: 0.57
+  max_trans_vel: 1.0 # exception is z axis front facing 0.5
+  max_trans_acc: 5.0 # again front facing z motion is lower
+  max_trans_dec: -5.0 # as above
+  max_rot_vel: 0.57 # this is all over the place depending on joint locations
